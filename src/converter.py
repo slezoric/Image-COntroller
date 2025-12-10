@@ -137,3 +137,101 @@ class PNGConverter:
         """
         directory = Path(directory)
         return sorted(directory.glob('*.png'))
+
+
+class WebPConverter:
+    """Handles conversion of WebP images to PNG format."""
+    
+    def __init__(self):
+        """Initialize the WebP converter."""
+        pass
+    
+    def convert_single(self, input_path: Union[str, Path], 
+                      output_path: Optional[Union[str, Path]] = None) -> Path:
+        """
+        Convert a single WebP image to PNG format.
+        
+        Args:
+            input_path: Path to input WebP file
+            output_path: Path for output PNG file (optional, auto-generated if None)
+            
+        Returns:
+            Path to the created PNG file
+            
+        Raises:
+            FileNotFoundError: If input file doesn't exist
+            ValueError: If input file is not a WebP
+            IOError: If conversion fails
+        """
+        input_path = Path(input_path)
+        
+        if not input_path.exists():
+            raise FileNotFoundError(f"Input file not found: {input_path}")
+        
+        if input_path.suffix.lower() != '.webp':
+            raise ValueError(f"Input file must be WebP: {input_path}")
+        
+        # Generate output path if not provided
+        if output_path is None:
+            output_path = input_path.with_suffix('.png')
+        else:
+            output_path = Path(output_path)
+        
+        try:
+            # Open and convert the image
+            with Image.open(input_path) as img:
+                img.save(output_path, 'PNG')
+            
+            logger.info(f"Converted {input_path.name} -> {output_path.name}")
+            return output_path
+            
+        except Exception as e:
+            raise IOError(f"Failed to convert {input_path}: {str(e)}")
+    
+    def convert_batch(self, input_dir: Union[str, Path], 
+                     output_dir: Optional[Union[str, Path]] = None) -> List[Path]:
+        """
+        Convert all WebP files in a directory to PNG format.
+        
+        Args:
+            input_dir: Directory containing WebP files
+            output_dir: Directory for output PNG files (optional, uses input_dir if None)
+            
+        Returns:
+            List of paths to created PNG files
+            
+        Raises:
+            NotADirectoryError: If input_dir is not a directory
+        """
+        input_dir = Path(input_dir)
+        
+        if not input_dir.is_dir():
+            raise NotADirectoryError(f"Input path is not a directory: {input_dir}")
+        
+        # Use input directory if output not specified
+        if output_dir is None:
+            output_dir = input_dir
+        else:
+            output_dir = Path(output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Find all WebP files
+        webp_files = sorted(input_dir.glob('*.webp'))
+        
+        if not webp_files:
+            logger.warning(f"No WebP files found in {input_dir}")
+            return []
+        
+        # Convert each file
+        converted_files = []
+        for webp_file in webp_files:
+            output_path = output_dir / webp_file.with_suffix('.png').name
+            try:
+                self.convert_single(webp_file, output_path)
+                converted_files.append(output_path)
+            except Exception as e:
+                logger.error(f"Failed to convert {webp_file.name}: {str(e)}")
+                continue
+        
+        logger.info(f"Converted {len(converted_files)} of {len(webp_files)} files")
+        return converted_files

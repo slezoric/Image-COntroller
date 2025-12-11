@@ -4,6 +4,7 @@ This module provides the CLI for the PNG to WebP filmstrip converter.
 """
 
 import click
+from PIL import Image
 import logging
 from pathlib import Path
 from tqdm import tqdm
@@ -152,11 +153,14 @@ def filmstrip(input_dir, output_dir, quality, grid_size, convert_png, autocrop, 
               help='Override automatic grid size calculation')
 @click.option('--autocrop', is_flag=True,
               help='Automatically crop images to visible content before placement')
+@click.option('--padding', type=int, default=0, help='Padding in pixels for autocrop')
+@click.option('--square', is_flag=True, help='Force square output frame')
+@click.option('--fixed-center', is_flag=True, help='Preserve center of image during autocrop')
 @click.option('--save-png', is_flag=True, help='Save output as PNG instead of WebP')
 @click.option('--input-format', type=click.Choice(['png', 'webp'], case_sensitive=False), 
               default='png', help='Input file format (default: png)')
 @click.option('-v', '--verbose', is_flag=True, help='Enable verbose logging')
-def process(input_dir, output_dir, quality, grid_size, autocrop, save_png, input_format, verbose):
+def process(input_dir, output_dir, quality, grid_size, autocrop, padding, square, fixed_center, save_png, input_format, verbose):
     """Complete workflow: Convert PNGs to WebP and create filmstrip.
     
     This is the recommended command that combines conversion and filmstrip creation.
@@ -219,12 +223,15 @@ def process(input_dir, output_dir, quality, grid_size, autocrop, save_png, input
             return
         
         result = generator.create_filmstrip(
-            webp_files,
-            output_path,
+            image_paths=webp_files,
+            output_dir=output_path,
             name=input_path.name,
             grid_size=grid_size,
             quality=quality,
             autocrop=autocrop,
+            padding=padding,
+            square=square,
+            fixed_center=fixed_center,
             save_format='PNG' if save_png else 'WEBP'
         )
         
@@ -264,7 +271,11 @@ def to_png(input_path, output_path, verbose):
         click.echo(f"Converting file: {input_item}")
         try:
             result = converter.convert_single(input_item, output_path)
+            # Get dimensions
+            with Image.open(result) as img:
+                dims = f"{img.width}x{img.height}px"
             click.echo(f"✅ Converted to: {result}")
+            click.echo(f"📏 Dimensions: {dims}")
         except Exception as e:
             click.echo(f"❌ Failed to convert: {str(e)}", err=True)
             
@@ -293,11 +304,38 @@ def to_png(input_path, output_path, verbose):
                 except Exception as e:
                     click.echo(f"❌ Failed to convert {webp_file.name}: {str(e)}", err=True)
                     pbar.update(1)
-        
-        click.echo(f"✅ Successfully converted {len(converted)} of {len(webp_files)} files")
+
+@cli.command('info')
+@click.option('-i', '--input', 'input_path', required=True, type=click.Path(exists=True),
+              help='Input image file')
+def info(input_path):
+    """Get information about an image (dimensions, format, etc)."""
+    try:
+        file_path = Path(input_path)
+        if not file_path.is_file():
+            click.echo(f"❌ '{input_path}' is not a file", err=True)
+            return
+
+        with Image.open(file_path) as img:
+            file_size = file_path.stat().st_size
+            file_size_str = f"{file_size / 1024:.2f} KB"
+            if file_size > 1024 * 1024:
+                file_size_str = f"{file_size / (1024*1024):.2f} MB"
+
+            click.echo("\n============================================================")
+            click.echo(f"🖼️  Image Information: {file_path.name}")
+            click.echo("============================================================")
+            click.echo(f"📁 Path:       {file_path.absolute()}")
+            click.echo(f"📏 Dimensions: {img.width}x{img.height} px")
+            click.echo(f"🎨 Formats:    {img.format} ({img.mode})")
+            click.echo(f"💾 Size:       {file_size_str}")
+            click.echo("============================================================\n")
+            
+    except Exception as e:
+        click.echo(f"❌ Failed to read image: {str(e)}", err=True)
+
     
-    else:
-        click.echo("❌ Invalid input path: must be a file or directory", err=True)
+
 
 
 if __name__ == '__main__':
